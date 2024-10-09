@@ -43,6 +43,7 @@ use OCP\INavigationManager;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
+use OCP\Server;
 use OCP\Util;
 use Psr\Log\LoggerInterface;
 
@@ -89,6 +90,8 @@ class AppSettingsController extends Controller {
 		$this->initialState->provideInitialState('appstoreDeveloperDocs', $this->urlGenerator->linkToDocs('developer-manual'));
 		$this->initialState->provideInitialState('appstoreUpdateCount', count($this->getAppsWithUpdates()));
 
+		$this->provideAppApiState();
+
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedImageDomain('https://usercontent.apps.nextcloud.com');
 
@@ -99,6 +102,37 @@ class AppSettingsController extends Controller {
 		Util::addScript('settings', 'vue-settings-apps-users-management');
 
 		return $templateResponse;
+	}
+
+	private function provideAppApiState(): void {
+		$appApiEnabled = $this->appManager->isInstalled('app_api');
+		$this->initialState->provideInitialState('appApiEnabled', $appApiEnabled);
+		$daemonConfigAccessible = false;
+		$defaultDaemonConfig = null;
+
+		if ($appApiEnabled) {
+			$exAppFetcher = Server::get(\OCA\AppAPI\Fetcher\ExAppFetcher::class);
+			$this->initialState->provideInitialState('appstoreExAppUpdateCount', count($exAppFetcher->getExAppsWithUpdates()));
+
+			$defaultDaemonConfigName = $this->config->getAppValue('app_api', 'default_daemon_config');
+			if ($defaultDaemonConfigName !== '') {
+				$daemonConfigService = Server::get(\OCA\AppAPI\Service\DaemonConfigService::class);
+				$daemonConfig = $daemonConfigService->getDaemonConfigByName($defaultDaemonConfigName);
+				if ($daemonConfig !== null) {
+					$defaultDaemonConfig = $daemonConfig->jsonSerialize();
+					unset($defaultDaemonConfig['deploy_config']['haproxy_password']);
+					$dockerActions = Server::get(\OCA\AppAPI\DeployActions\DockerActions::class);
+					$dockerActions->initGuzzleClient($daemonConfig);
+					$daemonConfigAccessible = $dockerActions->ping($dockerActions->buildDockerUrl($daemonConfig));
+					if (!$daemonConfigAccessible) {
+						$this->logger->warning(sprintf('Deploy daemon "%s" is not accessible by Nextcloud. Please verify its configuration', $daemonConfig->getName()));
+					}
+				}
+			}
+		}
+
+		$this->initialState->provideInitialState('defaultDaemonConfigAccessible', $daemonConfigAccessible);
+		$this->initialState->provideInitialState('defaultDaemonConfig', $defaultDaemonConfig);
 	}
 
 	/**
@@ -230,25 +264,11 @@ class AppSettingsController extends Controller {
 		], $categories);
 	}
 
-	/**
-	 * Convert URL to proxied URL so CSP is no problem
-	 */
-	private function createProxyPreviewUrl(string $url): string {
-		if ($url === '') {
-			return '';
-		}
-		return 'https://usercontent.apps.nextcloud.com/' . base64_encode($url);
-	}
-
 	private function fetchApps() {
 		$appClass = new \OC_App();
 		$apps = $appClass->listAllApps();
 		foreach ($apps as $app) {
 			$app['installed'] = true;
-			// locally installed apps have a flatted screenshot property
-			if (isset($app['screenshot'][0])) {
-				$app['screenshot'] = $this->createProxyPreviewUrl($app['screenshot'][0]);
-			}
 			$this->allApps[$app['id']] = $app;
 		}
 
@@ -307,7 +327,7 @@ class AppSettingsController extends Controller {
 		$apps = array_map(function (array $appData) use ($dependencyAnalyzer, $ignoreMaxApps) {
 			if (isset($appData['appstoreData'])) {
 				$appstoreData = $appData['appstoreData'];
-				$appData['screenshot'] = $this->createProxyPreviewUrl($appstoreData['screenshots'][0]['url'] ?? '');
+				$appData['screenshot'] = isset($appstoreData['screenshots'][0]['url']) ? 'https://usercontent.apps.nextcloud.com/' . base64_encode($appstoreData['screenshots'][0]['url']) : '';
 				$appData['category'] = $appstoreData['categories'];
 				$appData['releases'] = $appstoreData['releases'];
 			}
@@ -321,10 +341,6 @@ class AppSettingsController extends Controller {
 			$groups = [];
 			if (is_string($appData['groups'])) {
 				$groups = json_decode($appData['groups']);
-				// ensure 'groups' is an array
-				if (!is_array($groups)) {
-					$groups = [$groups];
-				}
 			}
 			$appData['groups'] = $groups;
 			$appData['canUnInstall'] = !$appData['active'] && $appData['removable'];
