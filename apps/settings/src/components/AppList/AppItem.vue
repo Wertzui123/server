@@ -123,8 +123,7 @@ import SvgFilterMixin from '../SvgFilterMixin.vue'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcIconSvgWrapper from '@nextcloud/vue/dist/Components/NcIconSvgWrapper.js'
 import { mdiCogOutline } from '@mdi/js'
-import { useAppApiStore } from '../../store/app-api-store'
-
+import { useAppApiStore } from '../../store/app-api-store.ts'
 
 export default {
 	name: 'AppItem',
@@ -133,14 +132,6 @@ export default {
 		AppScore,
 		NcButton,
 		NcIconSvgWrapper,
-	},
-	setup() {
-		const appApiStore = useAppApiStore()
-
-		return {
-			appApiStore,
-			mdiCogOutline,
-		}
 	},
 	mixins: [AppManagement, SvgFilterMixin],
 	props: {
@@ -168,6 +159,14 @@ export default {
 			type: Boolean,
 			default: false,
 		},
+	},
+	setup() {
+		const appApiStore = useAppApiStore()
+
+		return {
+			appApiStore,
+			mdiCogOutline,
+		}
 	},
 	data() {
 		return {
