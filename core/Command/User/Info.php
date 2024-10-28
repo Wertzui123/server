@@ -77,11 +77,11 @@ class Info extends Base {
 			return [];
 		}
 		return [
-			'free' => $storage['free'],
-			'used' => $storage['used'],
-			'total' => $storage['total'],
-			'relative' => $storage['relative'],
-			'quota' => $storage['quota'],
+			'free' => \OC_Helper::humanFileSize($storage['free']),
+			'used' => \OC_Helper::humanFileSize($storage['used']),
+			'total' => \OC_Helper::humanFileSize($storage['total']),
+			'usedSpacePercent' => $storage['relative'] . '%',
+			'quota' => ($storage['quota'] >= 0) ? \OC_Helper::humanFileSize($storage['quota']) : $storage['quota'],
 		];
 	}
 
