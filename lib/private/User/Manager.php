@@ -760,6 +760,7 @@ class Manager extends PublicEmitter implements IUserManager {
 			->andWhere($queryBuilder->expr()->eq('pref_login.configkey', $queryBuilder->expr()->literal('lastLogin')))
 			->setFirstResult($offset)
 			->setMaxResults($limit)
+			->runAcrossAllShards()
 		;
 
 		// Oracle don't want to run ORDER BY on CLOB column
